@@ -7,11 +7,11 @@ import { keccak256 } from "js-sha3";
 
 export const credentials = {
   iam: {
-    accessKeyId: "AKIAY3GANUY7FGOSWNVN", //credentials for your IAM user
-    secretAccessKey: "EV1IoXdRA8QpQvS2pgUKeaTA5ujStpBJzqP3TrQG", //credentials for your IAM user
-    region: "ap-southeast-1",
+    accessKeyId: process.env.IAM_accessKeyId, //credentials for your IAM user
+    secretAccessKey: process.env.IAM_secretAccessKey, //credentials for your IAM user
+    region: process.env.IAM_region,
   },
-  KeyId: "6c815f28-b977-40ef-8dd8-0c332b72ac95",
+  KeyId: process.env.KMS_KeyId,
 };
 
 export const generators = {

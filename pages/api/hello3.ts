@@ -116,7 +116,7 @@ export default async function handler(
 ) {
   // get nonce of the ethereum address using ethers.js
   const provider = new providers.JsonRpcProvider(
-    "https://polygon-mumbai.g.alchemy.com/v2/D8zWjAjZyN5bh6hioc9pA_6E34HZzUAn"
+    process.env.NEXTPUBLIC_RPC_PROVIDER
   );
 
   let senderPublicKey = await steps.getWalletAddress();

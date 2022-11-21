@@ -13,7 +13,7 @@ import { resolveProperties } from "@ethersproject/properties";
 import { keccak256 as eth_keccak256 } from "@ethersproject/keccak256";
 import { serialize } from "@ethersproject/transactions";
 import { getAddress, stripZeros } from "ethers/lib/utils";
-import { hexConcat, SignatureLike, splitSignature } from "@ethersproject/bytes";
+import { hexConcat } from "@ethersproject/bytes";
 import {
   UnsignedTransaction,
   AccessListish,
@@ -23,11 +23,11 @@ import * as RLP from "@ethersproject/rlp";
 
 const credentials = {
   iam: {
-    accessKeyId: "AKIAY3GANUY7FGOSWNVN", //credentials for your IAM user
-    secretAccessKey: "EV1IoXdRA8QpQvS2pgUKeaTA5ujStpBJzqP3TrQG", //credentials for your IAM user
-    region: "ap-southeast-1",
+    accessKeyId: process.env.IAM_accessKeyId, //credentials for your IAM user
+    secretAccessKey: process.env.IAM_secretAccessKey, //credentials for your IAM user
+    region: process.env.IAM_region,
   },
-  KeyId: "6c815f28-b977-40ef-8dd8-0c332b72ac95",
+  KeyId: process.env.KMS_KeyId,
   kmsEncryptParams: function (buffer) {
     return {
       KeyId: this.KeyId, // The identifier of the CMK to use for encryption. You can use the key ID or Amazon Resource Name (ARN) of the CMK, or the name or ARN of an alias that refers to the CMK.
@@ -281,7 +281,7 @@ export default async function handler(
 
   // get nonce of the ethereum address using ethers.js
   const provider = new providers.JsonRpcProvider(
-    "https://polygon-mumbai.g.alchemy.com/v2/D8zWjAjZyN5bh6hioc9pA_6E34HZzUAn"
+    process.env.NEXTPUBLIC_RPC_PROVIDER
   );
 
   let nonce = await provider.getTransactionCount(ethAddr);
