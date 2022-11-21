@@ -37,6 +37,20 @@ export const generators = {
 
 export const KMS = generators.getKMS();
 
+const ecdsa = {
+  pubkey_parse: asn1.define("EcdsaPubKey", function (this: any) {
+    // parsing this according to https://tools.ietf.org/html/rfc5480#section-2
+    this.seq().obj(
+      this.key("algo").seq().obj(this.key("a").objid(), this.key("b").objid()),
+      this.key("pubKey").bitstr()
+    );
+  }),
+  asn_pase: asn1.define("EcdsaSig", function (this: any) {
+    // parsing this according to https://tools.ietf.org/html/rfc3279#section-2.2.3
+    this.seq().obj(this.key("r").int(), this.key("s").int());
+  }),
+};
+
 export const methods = {
   enc_dec: {
     encrypt: function (buffer: any) {
@@ -66,21 +80,6 @@ export const methods = {
       });
     },
   },
-  ecdsa: {
-    pubkey_parse: asn1.define("EcdsaPubKey", function (this: any) {
-      // parsing this according to https://tools.ietf.org/html/rfc5480#section-2
-      this.seq().obj(
-        this.key("algo")
-          .seq()
-          .obj(this.key("a").objid(), this.key("b").objid()),
-        this.key("pubKey").bitstr()
-      );
-    }),
-    asn_pase: asn1.define("EcdsaSig", function (this: any) {
-      // parsing this according to https://tools.ietf.org/html/rfc3279#section-2.2.3
-      this.seq().obj(this.key("r").int(), this.key("s").int());
-    }),
-  },
   sign: function (buffer: Buffer) {
     return new Promise((resolve, reject) => {
       const params = generators.kmsSignParams(buffer);
@@ -99,43 +98,41 @@ export const methods = {
       KeyId: credentials.KeyId,
     }).promise();
   },
-  signature: {
-    sign_rs: async function (buffer: Buffer) {
-      let signature = await this.sign(buffer);
-      if (signature["Signature"] == undefined) {
-        throw new Error("Signature is undefined.");
-      }
+  sign_rs: async function (buffer: Buffer) {
+    let signature = await this.sign(buffer);
+    if (signature["Signature"] == undefined) {
+      throw new Error("Signature is undefined.");
+    }
 
-      let decoded = this.ecdsa.asn_pase.decode(signature["Signature"], "der");
-      let r = decoded.r;
-      let s = decoded.s;
+    let decoded = ecdsa.asn_pase.decode(signature["Signature"], "der");
+    let r = decoded.r;
+    let s = decoded.s;
 
-      let secp256k1N = new BN(
-        "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
-        16
-      ); // max value on the curve
-      let secp256k1halfN = secp256k1N.div(new BN(2)); // half of the curve
-      // Because of EIP-2 not all elliptic curve signatures are accepted
-      // the value of s needs to be SMALLER than half of the curve
-      // i.e. we need to flip s if it's greater than half of the curve
-      if (s.gt(secp256k1halfN)) {
-        // According to EIP2 https://github.com/ethereum/EIPs/blob/master/EIPS/eip-2.md
-        // if s < half the curve we need to invert it
-        s = secp256k1N.sub(s);
-        return { r, s };
-      }
-      // if s is less than half of the curve, we're on the "good" side of the curve, we can just return
+    let secp256k1N = new BN(
+      "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+      16
+    ); // max value on the curve
+    let secp256k1halfN = secp256k1N.div(new BN(2)); // half of the curve
+    // Because of EIP-2 not all elliptic curve signatures are accepted
+    // the value of s needs to be SMALLER than half of the curve
+    // i.e. we need to flip s if it's greater than half of the curve
+    if (s.gt(secp256k1halfN)) {
+      // According to EIP2 https://github.com/ethereum/EIPs/blob/master/EIPS/eip-2.md
+      // if s < half the curve we need to invert it
+      s = secp256k1N.sub(s);
       return { r, s };
-    },
-    sign_v: async function (msg: Buffer, r: BN, s: BN, v: number) {
-      let rBuffer = r.toBuffer();
-      let sBuffer = s.toBuffer();
-      let pubKey = ethutil.ecrecover(msg, v, rBuffer, sBuffer);
-      let addrBuf = ethutil.pubToAddress(pubKey);
-      var RecoveredEthAddr = ethutil.bufferToHex(addrBuf);
-      // console.log("Recovered ethereum address: " + RecoveredEthAddr);
-      return RecoveredEthAddr;
-    },
+    }
+    // if s is less than half of the curve, we're on the "good" side of the curve, we can just return
+    return { r, s };
+  },
+  sign_v: async function (msg: Buffer, r: BN, s: BN, v: number) {
+    let rBuffer = r.toBuffer();
+    let sBuffer = s.toBuffer();
+    let pubKey = ethutil.ecrecover(msg, v, rBuffer, sBuffer);
+    let addrBuf = ethutil.pubToAddress(pubKey);
+    var RecoveredEthAddr = ethutil.bufferToHex(addrBuf);
+    // console.log("Recovered ethereum address: " + RecoveredEthAddr);
+    return RecoveredEthAddr;
   },
   recover: async function (msg: Buffer, r: BN, s: BN, expectedEthAddr: string) {
     // This is the wrapper function to find the right v value
@@ -143,12 +140,12 @@ export const methods = {
     // we need to find the one that matches to our public key
     // it can be v = 27 or v = 28
     let v = 27;
-    let pubKey = this.signature.sign_v(msg, r, s, v);
+    let pubKey = this.sign_v(msg, r, s, v);
     if (pubKey != expectedEthAddr) {
       // if the pub key for v = 27 does not match
       // it has to be v = 28
       v = 28;
-      pubKey = this.signature.sign_v(msg, r, s, v);
+      pubKey = this.sign_v(msg, r, s, v);
     }
     // console.log("Found the right ETH Address: " + pubKey + " v: " + v);
     return { pubKey, v };
@@ -162,7 +159,7 @@ export const methods = {
       // I used https://lapo.it/asn1js to figure out how to parse this
       // and defined the schema in the EcdsaPubKey object
       // console.log(publicKey);
-      let res = this.ecdsa.pubkey_parse.decode(asn1PubKey, "der");
+      let res = ecdsa.pubkey_parse.decode(asn1PubKey, "der");
       let pubKeyBuffer: Buffer = res.pubKey.data;
 
       // The public key starts with a 0x04 prefix that needs to be removed
